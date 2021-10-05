@@ -6,5 +6,7 @@ components:
 
 pipelines:
   path: kubeflow/pipeline
+  user: ocdkube
   pipelines:
     - name: workflow.py
+      run: true # run the pipeline with in user's namespace
