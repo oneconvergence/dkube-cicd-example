@@ -8,3 +8,4 @@ pipelines:
   path: kubeflow/pipeline
   pipelines:
     - name: workflow.py
+      build_image: ocdr/d3cicd:1.5.9
