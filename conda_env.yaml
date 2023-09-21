@@ -4,8 +4,17 @@ channels:
   - defaults
 
 dependencies:
-  - python=3.8
+  - python=3.7
   - pip
   - pip:
-    - scikit-learn
-    - kfserving
+    - dkube-cicd-controller==1.6.0          
+    - git+https://github.com/oneconvergence/dkube.git@3.8
+    - matplotlib
+    - logger
+    - scipy
+    - mlflow
+    - argparse
+    - kfp-server-api==1.2.0
+    - kfp==1.6.3
+variables:
+  DKUBE_USER_ACCESS_TOKEN: "eyJhbGciOiJSUzI1NiIsImtpZCI6Ijc0YmNkZjBmZWJmNDRiOGRhZGQxZWIyOGM2MjhkYWYxIn0.eyJ1c2VybmFtZSI6Im9jZGt1YmUiLCJyb2xlIjoiZGF0YXNjaWVudGlzdCxtbGUscGUsb3BlcmF0b3IiLCJkZXBsb3kiOmZhbHNlLCJleHAiOjQ5MzAwOTc0ODUsImlhdCI6MTY5MDA5NzQ4NSwiaXNzIjoiRGt1YmUifQ.3oVnUtFZaBZrXnZr2a5SnftJvXYjn3ZtbGnoNy31CBXgDS7CFZ8ldxvqLlkd8xCXAO5S6Fz2LEYhp3D1zEybuTqwVFVqwRTXe8CnuN1iz_UT4Gj6XZuNqZ29_XK0kjc_X86jx0-fLUVhk6sWpulFR_q6lyjVm63zi3oAD74sVtl-Cvi4MHYrBXNV_eb3dliwsyBneM1VyOXsPX13XvRogdDkQAf22p_hDO3TjVEo7wmx_b4VoEIvY-Vl3Qr0An7drXHT5sBejFjRXxB_0vuAii1AJh66QoLVgXal6g9dMvmpCXZ9K4g09QbUg1c1_VP-VO-Rh189BzIDyp34dMcrGQ"
