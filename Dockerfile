@@ -23,29 +23,13 @@ RUN conda env create -f conda_env.yaml && \
      conda clean -afy && conda init bash && \
      echo "conda activate dkube-env" >> ~/.bashrc
 
+RUN cp /root/miniconda3/envs/dkube-env/bin/dcc /usr/local/bin/dcc
+RUN cp /root/miniconda3/envs/dkube-env/bin/dsl-compile /usr/local/bin/dsl-compile
 RUN ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1
-
-#dcc
-#RUN source ~/.bashrc && curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3.7 get-pip.py && \
-#    rm get-pip.py && \
-#    pip install dkube-cicd-controller==1.6.0 setuptools==66.1.1 && \
-#    ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1
-
-#RUN conda activate dkube-env && pip install dkube-cicd-controller==1.6.0 && ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1
 
 #kubectl
 RUN curl -LO https://dl.k8s.io/release/v1.20.0/bin/linux/amd64/kubectl
 RUN mv kubectl /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
-
-#RUN sed -i '1c\#!\/root\/miniconda3\/envs\/dkube-env\/bin\/python3.7' /usr/local/bin/dsl-compile
-#RUN sed -i '1c\#!\/root\/miniconda3\/envs\/dkube-env\/bin\/python3.7' /usr/local/bin/dcc
-
-#RUN echo "import re \
-#import sys \
-#from kfp.compiler.main import main \
-#if __name__ == '__main__': \
-#    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0]) \
-#    sys.exit(main())" > /usr/local/bin/dsl-compile
 
 
 RUN touch /built_using_dockerfile
