@@ -1,0 +1,228 @@
+name: dkube_slurmjob_launcher
+description: Launcher for slurmjob using DKube APIs.
+metadata:
+  annotations: {platform: Dkube}
+  labels:
+    platform: Dkube
+    stage: preprocess
+    logger: dkubepl
+    wfid: '{{workflow.uid}}'
+    runid: '{{pod.name}}'
+inputs:
+- {name: cluster, type: String}
+- {name: props, type: type}
+- {name: user, type: String}
+- {name: token, type: String}
+- {name: run, type: type}
+- {name: url, type: String, default: 'https://dkube-proxy.dkube', optional: true}
+outputs:
+- {name: artifacts, type: String}
+- {name: run_details, type: String}
+implementation:
+  container:
+    image: ocdr/dkube_launcher:slurm
+    command:
+    - python3
+    - -u
+    - -c
+    - |
+      def launch_slurmjob(cluster, props,
+                          user, token, run,
+                          url = 'https://dkube-proxy.dkube'):
+
+          import ast
+          import json
+          import os
+          import pprint
+          import time
+          from collections import namedtuple
+          from json import JSONDecodeError
+
+          import kfp
+          import yaml
+          from dkube.sdk.internal.api_base import ApiBase
+          from dkube.sdk.internal.dkube_api.models.job_model import JobModel
+          from dkube.slurm.job_properties import JobProperties
+          from pyfiglet import Figlet
+          from url_normalize import url_normalize
+
+          if isinstance(run, JobModel) == True:
+              run = run.to_dict()
+          elif isinstance(run, str) == True:
+              run = ast.literal_eval(run)
+          else:
+              assert True, "type of parameter run can be either instance of JobModel or a string of dict"
+
+          if isinstance(props, JobProperties) == True:
+              props = props.to_dict()
+          elif isinstance(props, str) == True:
+              props = ast.literal_eval(props)
+          else:
+              assert True, "type of parameter props can be either instance of JobProperties or a string of dict"
+
+          kind = run['parameters']['_class']
+          assert kind in [
+              "training", "preprocessing"], "Slurm job is supported only for Training/Preprocessing DKube job types"
+
+          f = Figlet(font='slant', width=200)
+          print(f.renderText('Dkube {}'.format("SlurmJob")))
+
+          print("... Input (run) ...")
+          print(yaml.dump(run))
+          print()
+          print("... Input (properties) ...")
+          print(yaml.dump(props))
+          print("...................")
+
+          run['parameters']['class'] = kind
+
+          # check if datums are in right format user:datum
+          if 'datums' in run['parameters'][kind]:
+              datums = run['parameters'][kind]['datums']
+              datasets = datums.get('datasets', [])
+              if datasets != None:
+                  for idx, item in enumerate(datasets):
+                      if item['name'] != None and ':' not in item['name']:
+                          datasets[idx]['name'] = user + ':' + item['name']
+              models = datums.get('models', [])
+              if models != None:
+                  for idx, item in enumerate(models):
+                      if item['name'] != None and ':' not in item['name']:
+                          models[idx]['name'] = user + ':' + item['name']
+              outputs = datums.get('outputs', [])
+              if outputs != None:
+                  for idx, item in enumerate(outputs):
+                      if item['name'] != None and ':' not in item['name']:
+                          outputs[idx]['name'] = user + ':' + item['name']
+              code = datums.get('workspace', None)
+              if code != None and code['data'] != None and code['data']['name'] != None:
+                  if ':' not in code['data']['name']:
+                      code['data']['name'] = user + ':' + code['data']['name']
+
+          # check if am running as pipeline component
+          if os.getenv('pipeline', 'false').lower() == 'true':
+              wfid, runid = os.getenv("wfid"), os.getenv("runid")
+              run['name'] = runid
+              run['parameters'][kind]['tags'].extend(
+                  ['owner=pipeline', 'workflowid=' + wfid, 'runid=' + runid])
+              if run['parameters']['generated'] is None:
+                  run['parameters']['generated'] = dict()
+              run['parameters']['generated']['uuid'] = runid
+              run['parameters']['generated'].update({'pipeline': {'runid': wfid}})
+
+          slurm = {
+              "name": cluster,
+              "kind": "CLUSTER_SLURMHPC_REMOTE",
+              "scheduling_opts": {
+                      "slurmhpc": {
+                          "file": {
+                              "name": "properties.json",
+                              "body": json.dumps({
+                                  "extra": json.dumps(props)})
+                          }
+                      }
+              }
+          }
+
+          run['parameters'][kind]["cluster"] = slurm
+
+          name = run['name']
+          api = ApiBase(url, token, [])
+          api._api.jobs_add_one(user=user, data=run, run='true')
+
+          # wait loop
+          recorded = None
+          while True:
+              run = api.get_run(kind, user, name)['job']
+              status = run['parameters']['generated']['status']
+              state, reason = status['state'], status['reason']
+              if state.lower() in ['complete', 'failed', 'error']:
+                  recorded = state
+                  print(
+                      "run {} - completed with state {} and reason {}".format(name, state, reason))
+                  break
+              else:
+                  if recorded != state:
+                      print(
+                          "run {} - waiting for completion, current state {}".format(name, state))
+              recorded = state
+              time.sleep(10)
+
+          if recorded.lower() in ['failed', 'error']:
+              exit(1)
+
+          rundetails = json.dumps(run)
+
+          uuid = run['parameters']['generated']['uuid']
+          lineage = api.get_run_lineage(kind, user, uuid)
+          outputs = lineage['outputs']
+
+          isremote = lambda output: 'version' in output and output['version'] != None
+          artifacts=[
+              {'datum': output['version']['datum_name'], 'class': output['version']['datum_type'],
+               'version': output['version']['uuid'], 'index': output['version']['index']
+               }
+              for output in filter(isremote, outputs)
+          ]
+
+          artifacts=json.dumps(artifacts)
+
+          output=namedtuple('Outputs', ['artifacts', 'run_details'])
+          return output(artifacts, rundetails)
+
+      def _serialize_str(str_value: str) -> str:
+          if not isinstance(str_value, str):
+              raise TypeError('Value "{}" has type "{}" instead of str.'.format(str(str_value), str(type(str_value))))
+          return str_value
+
+      import argparse
+      _parser = argparse.ArgumentParser(prog='dkube_slurmjob_launcher', description='Launcher for slurmjob using DKube APIs.')
+      _parser.add_argument("--cluster", dest="cluster", type=str, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--props", dest="props", type=str, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--user", dest="user", type=str, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--token", dest="token", type=str, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--run", dest="run", type=str, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--url", dest="url", type=str, required=False, default=argparse.SUPPRESS)
+      _parser.add_argument("----output-paths", dest="_output_paths", type=str, nargs=2)
+      _parsed_args = vars(_parser.parse_args())
+      _output_files = _parsed_args.pop("_output_paths", [])
+
+      _outputs = launch_slurmjob(**_parsed_args)
+
+      _output_serializers = [
+          _serialize_str,
+          _serialize_str,
+
+      ]
+
+      import os
+      for idx, output_file in enumerate(_output_files):
+          try:
+              os.makedirs(os.path.dirname(output_file))
+          except OSError:
+              pass
+          with open(output_file, 'w') as f:
+              f.write(_output_serializers[idx](_outputs[idx]))
+    args:
+    - --cluster
+    - {inputValue: cluster}
+    - --props
+    - {inputValue: props}
+    - --user
+    - {inputValue: user}
+    - --token
+    - {inputValue: token}
+    - --run
+    - {inputValue: run}
+    - if:
+        cond: {isPresent: url}
+        then:
+        - --url
+        - {inputValue: url}
+    - '----output-paths'
+    - {outputPath: artifacts}
+    - {outputPath: run_details}
+    env:
+      pipeline: "true"
+      wfid: '{{workflow.uid}}'
+      runid: '{{pod.name}}'

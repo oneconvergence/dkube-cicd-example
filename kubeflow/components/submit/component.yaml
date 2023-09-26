@@ -1,0 +1,31 @@
+name: dkube-eval-submit
+description: |
+    Submit predictions to leaderboard.
+metadata:
+  annotations: {platform: 'Dkube'}
+  labels: {platform: 'Dkube', logger: 'dkubepl', wfid: '{{workflow.uid}}', runid: '{{pod.name}}', stage: 'submit'}
+inputs:
+  - {name: auth_token,      type: String,   optional: false,
+     description: 'Required. Dkube authentication token.'}
+  - {name: project_id,      type: String,   optional: false,
+     description: 'Required. ID of the project to which submission is made.'}
+  - {name: predictions, type: CSV, optional: false,
+    description: 'Required. CSV prediction file from previous component'}
+outputs:
+    - {name: mlpipeline-ui-metadata, description: 'metadata file to display static html'}
+    - {name: submit-results, description: 'folder contain output from eval script'}
+implementation:
+  container:
+    image: ocdr/d3project_eval:v5
+    command: ['python']
+    args: [
+      submit.py,
+      '{{workflow.uid}}',
+      "-p", {inputValue: project_id},
+      "-t", {inputValue: auth_token},
+      {inputPath: predictions}
+    ]
+
+    fileOutputs:
+      mlpipeline-ui-metadata: /metadata.json
+      submit-results: /results
